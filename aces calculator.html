@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculateur Aces — Duel ATP/WTA</title>
+<style>
+  :root{
+    --bg:#e9e8e2;
+    --panel:#f4f3ee;
+    --ink:#1b1e1c;
+    --rule:#8a8d86;
+    --accent:#1f6f5c;
+    --accent2:#a3552f;
+    --bar1:#1f6f5c;
+    --bar2:#3f8c76;
+    --muted:#5c5f58;
+    --warn:#a3552f;
+    --good:#1f6f5c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"SF Mono","Consolas","Menlo",monospace;
+    font-size:13px;
+    line-height:1.5;
+    margin:0;
+    padding:12px;
+  }
+  h1{
+    font-size:15px;
+    letter-spacing:.5px;
+    margin:0 0 4px 0;
+  }
+  .sub{color:var(--muted); font-size:11px; margin-bottom:14px;}
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    padding:12px 14px;
+    margin-bottom:12px;
+  }
+  .rule{border:none;border-top:1px dashed var(--rule); margin:10px 0;}
+  .rule2{border:none;border-top:2px solid var(--ink); margin:10px 0;}
+  label{display:block; font-size:11px; color:var(--muted); margin-bottom:2px; margin-top:8px;}
+  input[type=text], input[type=number], select{
+    width:100%;
+    font-family:inherit;
+    font-size:13px;
+    background:#fff;
+    border:1px solid var(--rule);
+    border-radius:3px;
+    padding:6px 8px;
+    color:var(--ink);
+  }
+  .row{display:flex; gap:10px; flex-wrap:wrap;}
+  .row > div{flex:1; min-width:140px;}
+  button{
+    font-family:inherit;
+    font-size:12px;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    border-radius:3px;
+    padding:8px 12px;
+    cursor:pointer;
+    margin-top:10px;
+    margin-right:6px;
+  }
+  button.secondary{background:transparent; color:var(--accent); border:1px solid var(--accent);}
+  button:disabled{opacity:.5; cursor:default;}
+  .status{font-size:11px; color:var(--muted); margin-top:8px; white-space:pre-wrap;}
+  .suggestions{
+    background:#fff; border:1px solid var(--rule); border-radius:3px;
+    margin-top:2px; max-height:140px; overflow-y:auto; display:none;
+  }
+  .suggestions div{padding:5px 8px; cursor:pointer; font-size:12px;}
+  .suggestions div:hover{background:var(--bg);}
+  pre.output{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    padding:12px 14px;
+    white-space:pre-wrap;
+    overflow-x:auto;
+    font-size:12.5px;
+  }
+  .bar-row{display:flex; align-items:center; gap:8px; margin:2px 0;}
+  .bar-label{width:150px; flex-shrink:0; font-size:12px;}
+  .bar-track{flex:1; background:#dedcd3; border-radius:2px; height:12px; overflow:hidden;}
+  .bar-fill{height:100%; background:linear-gradient(90deg, var(--bar1), var(--bar2));}
+  .bar-val{width:110px; flex-shrink:0; font-size:12px; text-align:right;}
+  .section-title{font-weight:bold; margin:4px 0 8px 0;}
+  .note{font-size:11px; color:var(--muted); margin-top:10px;}
+  .warn{color:var(--warn);}
+  .good{color:var(--good); font-weight:bold;}
+  .two-col{display:flex; gap:14px; flex-wrap:wrap;}
+  .two-col > div{flex:1; min-width:280px;}
+  table{border-collapse:collapse; width:100%; font-size:12.5px; margin-top:6px;}
+  td, th{border-bottom:1px solid var(--rule); padding:4px 6px; text-align:left;}
+  th{color:var(--muted); font-weight:normal;}
+  .right{text-align:right;}
+</style>
+</head>
+<body>
+
+<h1>&#9673; CALCULATEUR ACES — Duel ATP / WTA</h1>
+<div class="sub">Données : Jeff Sackmann (tennis_atp / tennis_wta, GitHub — libre accès). Modèle : taux pondéré + facteur adversaire (qualité de retour) + Poisson/Skellam.</div>
+
+<div class="panel">
+  <div class="row">
+    <div>
+      <label>Circuit</label>
+      <select id="tour">
+        <option value="atp">ATP (hommes)</option>
+        <option value="wta">WTA (femmes)</option>
+      </select>
+    </div>
+    <div>
+      <label>Historique à charger</label>
+      <select id="yearsBack">
+        <option value="4">4 dernières années (rapide)</option>
+        <option value="6" selected>6 dernières années (recommandé)</option>
+        <option value="10">10 dernières années</option>
+        <option value="20">20 dernières années (lent, plus fidèle au "career")</option>
+      </select>
+    </div>
+    <div style="flex:0 0 auto; align-self:flex-end;">
+      <button id="loadBtn" type="button">Charger les données</button>
+    </div>
+  </div>
+  <div class="status" id="loadStatus">Aucune donnée chargée.</div>
+</div>
+
+<div class="panel" id="matchupPanel" style="display:none;">
+  <div class="row">
+    <div style="position:relative;">
+      <label>Joueur A</label>
+      <input type="text" id="playerA" placeholder="ex: James Duckworth" autocomplete="off">
+      <div class="suggestions" id="suggA"></div>
+    </div>
+    <div style="position:relative;">
+      <label>Joueur B</label>
+      <input type="text" id="playerB" placeholder="ex: Arthur Fery" autocomplete="off">
+      <div class="suggestions" id="suggB"></div>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Surface du match</label>
+      <select id="surface">
+        <option value="Hard">Hard</option>
+        <option value="Clay">Clay (terre battue)</option>
+        <option value="Grass">Grass (gazon)</option>
+        <option value="Carpet">Carpet</option>
+      </select>
+    </div>
+    <div>
+      <label>Format</label>
+      <select id="bestOf">
+        <option value="3" selected>Best of 3</option>
+        <option value="5">Best of 5 (Grand Chelem H)</option>
+      </select>
+    </div>
+    <div style="flex:0 0 auto; align-self:flex-end;">
+      <button id="computeBtn" type="button">Calculer le duel</button>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Ligne Total aces (Over/Under) — optionnel, sinon suggestion auto</label>
+      <input type="number" step="0.5" id="lineTotal" placeholder="ex: 12.5">
+    </div>
+    <div>
+      <label>Ligne handicap (aces, joueur A) — optionnel</label>
+      <input type="number" step="0.5" id="lineHcp" placeholder="ex: 1.5">
+    </div>
+  </div>
+</div>
+
+<div id="results"></div>
+
+<script>
+const CSV_BASE = {
+  atp: 'https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/atp_matches_',
+  wta: 'https://raw.githubusercontent.com/JeffSackmann/tennis_wta/master/wta_matches_'
+};
+
+const WEIGHTS = { career:0.10, surface:0.20, l52ws:0.25, l52w:0.20, l10:0.25 };
+const RETURN_SHRINK_K = 800;   // points, shrinkage strength for opponent factor
+const HEIGHT_SHRINK_K = 400;   // points, shrinkage strength for height prior
+const MS_52W = 52*7*24*3600*1000;
+
+let state = { tour:null, rows:[], loadedYears:new Set(), nameIndex:new Map() };
+
+function normName(s){
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
+}
+
+function parseCSVText(text){
+  const lines = text.split('\n');
+  if(lines.length < 2) return [];
+  const header = splitCSVLine(lines[0]);
+  const idx = {};
+  header.forEach((h,i)=> idx[h.trim()] = i);
+  const out = [];
+  for(let i=1;i<lines.length;i++){
+    const line = lines[i];
+    if(!line || !line.trim()) continue;
+    const f = splitCSVLine(line);
+    if(f.length < header.length-2) continue;
+    out.push({f, idx});
+  }
+  return out;
+}
+
+function splitCSVLine(line){
+  // simple CSV split handling quoted fields
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(c === '"'){ inQ = !inQ; continue; }
+    if(c === ',' && !inQ){ out.push(cur); cur=''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+function g(row, name){
+  const i = row.idx[name];
+  if(i===undefined) return '';
+  return row.f[i];
+}
+function gn(row, name){
+  const v = g(row,name);
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+async function fetchYear(tour, year){
+  const url = CSV_BASE[tour] + year + '.csv';
+  try{
+    const resp = await fetch(url);
+    if(!resp.ok) return null;
+    const text = await resp.text();
+    return parseCSVText(text);
+  }catch(e){
+    return null;
+  }
+}
+
+function parseTourneyDate(s){
+  if(!s || s.length < 8) return null;
+  const y = parseInt(s.slice(0,4),10), m = parseInt(s.slice(4,6),10), d = parseInt(s.slice(6,8),10);
+  return new Date(y, m-1, d);
+}
+
+async function loadData(){
+  const tour = document.getElementById('tour').value;
+  const yearsBack = parseInt(document.getElementById('yearsBack').value,10);
+  const statusEl = document.getElementById('loadStatus');
+  const loadBtn = document.getElementById('loadBtn');
+
+  if(state.tour !== tour){
+    state = { tour, rows:[], loadedYears:new Set(), nameIndex:new Map() };
+  }
+
+  const nowYear = new Date().getFullYear();
+  const startYear = nowYear - yearsBack + 1;
+  const yearsToLoad = [];
+  for(let y=nowYear; y>=startYear; y--){
+    if(!state.loadedYears.has(y)) yearsToLoad.push(y);
+  }
+
+  if(yearsToLoad.length === 0){
+    statusEl.textContent = `Déjà chargé : ${state.rows.length} matchs (${[...state.loadedYears].sort().join(', ')}).`;
+    document.getElementById('matchupPanel').style.display = 'block';
+    return;
+  }
+
+  loadBtn.disabled = true;
+  let done = 0;
+  for(const y of yearsToLoad){
+    statusEl.textContent = `Chargement ${y}… (${done+1}/${yearsToLoad.length})`;
+    const rows = await fetchYear(tour, y);
+    if(rows){
+      state.rows.push(...rows);
+      state.loadedYears.add(y);
+      for(const r of rows){
+        const wn = g(r,'winner_name'), ln = g(r,'loser_name');
+        if(wn) state.nameIndex.set(normName(wn), wn);
+        if(ln) state.nameIndex.set(normName(ln), ln);
+      }
+    }
+    done++;
+  }
+  loadBtn.disabled = false;
+  statusEl.innerHTML = `<span class="good">${state.rows.length} matchs chargés</span> — années : ${[...state.loadedYears].sort().join(', ')}. ${state.nameIndex.size} joueurs indexés.<br><span class="warn">Note : matchs du circuit principal uniquement (pas de Challenger/qualifs), stats d'aces disponibles à partir de 1991.</span>`;
+  document.getElementById('matchupPanel').style.display = 'block';
+}
+
+document.getElementById('loadBtn').addEventListener('click', loadData);
+
+// --- Name autocomplete ---
+function wireAutocomplete(inputId, suggId){
+  const input = document.getElementById(inputId);
+  const sugg = document.getElementById(suggId);
+  input.addEventListener('input', ()=>{
+    const q = normName(input.value);
+    sugg.innerHTML = '';
+    if(q.length < 2){ sugg.style.display='none'; return; }
+    const matches = [...state.nameIndex.entries()].filter(([norm,disp])=> norm.includes(q)).slice(0,8);
+    if(matches.length === 0){ sugg.style.display='none'; return; }
+    matches.forEach(([norm,disp])=>{
+      const div = document.createElement('div');
+      div.textContent = disp;
+      div.addEventListener('click', ()=>{ input.value = disp; sugg.style.display='none'; });
+      sugg.appendChild(div);
+    });
+    sugg.style.display = 'block';
+  });
+  document.addEventListener('click', (e)=>{ if(e.target !== input) sugg.style.display='none'; });
+}
+wireAutocomplete('playerA','suggA');
+wireAutocomplete('playerB','suggB');
+
+// --- Build per-player perspective records ---
+function buildPlayerRecords(playerNameNorm){
+  const recs = [];
+  for(const r of state.rows){
+    const wn = g(r,'winner_name'), ln = g(r,'loser_name');
+    let side = null;
+    if(wn && normName(wn) === playerNameNorm) side = 'W';
+    else if(ln && normName(ln) === playerNameNorm) side = 'L';
+    if(!side) continue;
+    const date = parseTourneyDate(g(r,'tourney_date'));
+    const surface = g(r,'surface');
+    const bestOf = gn(r,'best_of');
+    const prefix = side === 'W' ? 'w_' : 'l_';
+    const oppPrefix = side === 'W' ? 'l_' : 'w_';
+    const ace = gn(r, prefix+'ace');
+    const svpt = gn(r, prefix+'svpt');
+    const svGms = gn(r, prefix+'SvGms');
+    const firstWon = gn(r, prefix+'1stWon');
+    const secondWon = gn(r, prefix+'2ndWon');
+    const ownHt = gn(r, side==='W' ? 'winner_ht' : 'loser_ht');
+    // return stats: points played/won when THIS player returns = opponent's serve stats
+    const oppSvpt = gn(r, oppPrefix+'svpt');
+    const oppFirstWon = gn(r, oppPrefix+'1stWon');
+    const oppSecondWon = gn(r, oppPrefix+'2ndWon');
+    if(ace===null || svpt===null || svpt===0) continue;
+    recs.push({
+      date, surface, bestOf, ace, svpt, svGms,
+      retPlayed: oppSvpt, retWon: (oppSvpt!==null && oppFirstWon!==null && oppSecondWon!==null) ? (oppSvpt - oppFirstWon - oppSecondWon) : null,
+      ownHt
+    });
+  }
+  recs.sort((a,b)=> (a.date && b.date) ? a.date-b.date : 0);
+  return recs;
+}
+
+function sumRate(recs, filterFn){
+  let ace=0, svpt=0, n=0;
+  for(const r of recs){
+    if(filterFn && !filterFn(r)) continue;
+    ace += r.ace; svpt += r.svpt; n++;
+  }
+  return { rate: svpt>0 ? (ace/svpt*100) : null, n, svpt };
+}
+
+function computeRateComponents(recs, surface){
+  const now = new Date();
+  const career = sumRate(recs, null);
+  const surf = sumRate(recs, r=> r.surface === surface);
+  const l52w = sumRate(recs, r=> r.date && (now - r.date) <= MS_52W);
+  const l52ws = sumRate(recs, r=> r.surface === surface && r.date && (now - r.date) <= MS_52W);
+  const last10Recs = recs.slice(-10);
+  const l10 = sumRate(last10Recs, null);
+  return { career, surface: surf, l52ws, l52w, l10 };
+}
+
+function weightedBaseRate(components){
+  let totalW = 0, acc = 0;
+  const usable = [];
+  for(const key of Object.keys(WEIGHTS)){
+    const c = components[key];
+    if(c && c.rate !== null && c.n > 0){
+      usable.push([key, c]);
+    }
+  }
+  const usedWeightSum = usable.reduce((s,[k])=> s + WEIGHTS[k], 0);
+  if(usedWeightSum === 0) return { rate:null, detail:[] };
+  const detail = [];
+  for(const [key,c] of usable){
+    const w = WEIGHTS[key] / usedWeightSum; // renormalized
+    acc += c.rate * w;
+    detail.push({key, rate:c.rate, n:c.n, weight:w});
+  }
+  return { rate: acc, detail };
+}
+
+function returnStats(recs){
+  let won=0, played=0;
+  for(const r of recs){
+    if(r.retPlayed===null || r.retWon===null) continue;
+    played += r.retPlayed; won += r.retWon;
+  }
+  return { rate: played>0 ? won/played : null, played };
+}
+
+function tourAverageReturnRate(){
+  let won=0, played=0;
+  for(const r of state.rows){
+    const wSvpt=gn(r,'w_svpt'), w1=gn(r,'w_1stWon'), w2=gn(r,'w_2ndWon');
+    const lSvpt=gn(r,'l_svpt'), l1=gn(r,'l_1stWon'), l2=gn(r,'l_2ndWon');
+    if(wSvpt!==null && w1!==null && w2!==null){ played += wSvpt; won += (wSvpt-w1-w2); }
+    if(lSvpt!==null && l1!==null && l2!==null){ played += lSvpt; won += (lSvpt-l1-l2); }
+  }
+  return played>0 ? won/played : null;
+}
+
+function opponentFactor(opponentRecs, tourAvg){
+  const rs = returnStats(opponentRecs);
+  if(rs.rate === null || tourAvg === null) return { factor:1, n:0, raw:1 };
+  const raw = tourAvg / rs.rate;
+  const n = rs.played;
+  const shrunk = 1 + (raw - 1) * (n / (n + RETURN_SHRINK_K));
+  return { factor: shrunk, n, raw, oppReturnRate: rs.rate };
+}
+
+// --- Height prior (weighted linear regression: ace_rate% ~ height) ---
+function heightRegression(){
+  let sw=0, swx=0, swy=0, swxx=0, swxy=0;
+  for(const r of state.rows){
+    for(const side of ['w','l']){
+      const ht = gn(r, side==='w' ? 'winner_ht' : 'loser_ht');
+      const ace = gn(r, side+'_ace');
+      const svpt = gn(r, side+'_svpt');
+      if(ht===null || ace===null || svpt===null || svpt===0) continue;
+      const y = ace/svpt*100;
+      const w = svpt;
+      sw += w; swx += w*ht; swy += w*y; swxx += w*ht*ht; swxy += w*ht*y;
+    }
+  }
+  if(sw===0) return null;
+  const meanX = swx/sw, meanY = swy/sw;
+  const num = swxy - sw*meanX*meanY;
+  const den = swxx - sw*meanX*meanX;
+  if(den === 0) return { slope:0, intercept:meanY };
+  const slope = num/den;
+  const intercept = meanY - slope*meanX;
+  return { slope, intercept };
+}
+
+function applyHeightPrior(baseRate, careerN, ownHt, reg){
+  if(reg === null || ownHt === null) return baseRate;
+  const predicted = reg.intercept + reg.slope * ownHt;
+  const w = careerN / (careerN + HEIGHT_SHRINK_K);
+  return baseRate * w + predicted * (1-w);
+}
+
+// --- Expected service points per match ---
+function expectedSvptPerMatch(recs, bestOfTarget){
+  const now = new Date();
+  const recent = recs.filter(r=> r.date && (now - r.date) <= MS_52W);
+  const pool = recent.length >= 8 ? recent : recs;
+  const sameFmt = pool.filter(r=> r.bestOf === bestOfTarget);
+  const otherFmt = pool.filter(r=> r.bestOf !== bestOfTarget);
+  function avgSvpt(list){
+    if(list.length===0) return null;
+    return list.reduce((s,r)=>s+r.svpt,0)/list.length;
+  }
+  let est = avgSvpt(sameFmt);
+  if(est === null){
+    const other = avgSvpt(otherFmt) ?? avgSvpt(pool);
+    if(other === null) return null;
+    // heuristic bo5/bo3 games ratio if we must cross formats
+    const ratio = bestOfTarget === 5 ? 1.6 : (1/1.6);
+    est = other * ratio;
+  }
+  return est;
+}
+
+// --- Poisson / Skellam ---
+function poissonPMF(lambda, maxK){
+  const pmf = new Array(maxK+1);
+  pmf[0] = Math.exp(-lambda);
+  for(let k=1;k<=maxK;k++) pmf[k] = pmf[k-1] * lambda / k;
+  return pmf;
+}
+function fairOdds(p){
+  if(p<=0) return '—';
+  return (1/p).toFixed(2);
+}
+
+function bar(rate, maxRate){
+  const pct = maxRate>0 ? Math.min(100, (rate/maxRate*100)) : 0;
+  return `<div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+}
+
+const LABELS = { career:'career', surface:'surface', l52ws:'last_52w_surface', l52w:'last_52w', l10:'last_10' };
+
+function renderPlayerBlock(name, components, weighted, oppFactorInfo, finalRate){
+  const order = ['career','surface','l52ws','l52w','l10'];
+  const maxRate = Math.max(...order.map(k=> components[k].rate || 0), 0.0001);
+  let html = `<div class="section-title">&#9737; TAUX D'ACES PONDÉRÉ — ${name}</div>`;
+  for(const key of order){
+    const c = components[key];
+    const w = WEIGHTS[key];
+    const rateTxt = c.rate!==null ? c.rate.toFixed(2)+'%' : 'n/d';
+    html += `<div class="bar-row">
+      <div class="bar-label">${LABELS[key]}</div>
+      <div class="bar-val">${rateTxt} (poids ${(w*100).toFixed(0)}%, n=${c.n})</div>
+      ${bar(c.rate||0, maxRate)}
+    </div>`;
+  }
+  html += `<hr class="rule">`;
+  html += `<div>Base pondérée&nbsp;&nbsp;&nbsp;: <b>${weighted.rate!==null ? weighted.rate.toFixed(2)+'%' : 'n/d'}</b></div>`;
+  html += `<div>Facteur adversaire : ×${oppFactorInfo.factor.toFixed(3)} (normalisé sur ${oppFactorInfo.n.toFixed(0)} pts de retour, retour adverse ${oppFactorInfo.oppReturnRate!==undefined ? (oppFactorInfo.oppReturnRate*100).toFixed(1)+'%' : 'n/d'})</div>`;
+  html += `<div class="good">&#9654; Taux final ajusté : ${finalRate.toFixed(2)}%</div>`;
+  return html;
+}
+
+function computeDuel(){
+  const nameARaw = document.getElementById('playerA').value.trim();
+  const nameBRaw = document.getElementById('playerB').value.trim();
+  const surface = document.getElementById('surface').value;
+  const bestOf = parseInt(document.getElementById('bestOf').value,10);
+  const resultsEl = document.getElementById('results');
+
+  if(!nameARaw || !nameBRaw){
+    resultsEl.innerHTML = '<div class="panel warn">Renseigne les deux joueurs.</div>';
+    return;
+  }
+  const normA = normName(nameARaw), normB = normName(nameBRaw);
+  const dispA = state.nameIndex.get(normA) || nameARaw;
+  const dispB = state.nameIndex.get(normB) || nameBRaw;
+
+  const recsA = buildPlayerRecords(normA);
+  const recsB = buildPlayerRecords(normB);
+
+  if(recsA.length === 0 || recsB.length === 0){
+    resultsEl.innerHTML = `<div class="panel warn">Aucun match trouvé pour ${recsA.length===0?dispA:dispB} dans les données chargées. Vérifie l'orthographe ou charge plus d'historique.</div>`;
+    return;
+  }
+
+  const compA = computeRateComponents(recsA, surface);
+  const compB = computeRateComponents(recsB, surface);
+
+  const wbA = weightedBaseRate(compA);
+  const wbB = weightedBaseRate(compB);
+
+  const reg = heightRegression();
+  const careerNA = compA.career.n, careerNB = compB.career.n;
+  const ownHtA = recsA.find(r=>r.ownHt!==null)?.ownHt ?? null;
+  const ownHtB = recsB.find(r=>r.ownHt!==null)?.ownHt ?? null;
+
+  const baseAafterHt = wbA.rate!==null ? applyHeightPrior(wbA.rate, careerNA, ownHtA, reg) : null;
+  const baseBafterHt = wbB.rate!==null ? applyHeightPrior(wbB.rate, careerNB, ownHtB, reg) : null;
+
+  const tourAvg = tourAverageReturnRate();
+  const oppFactorForA = opponentFactor(recsB, tourAvg); // A faces B's return
+  const oppFactorForB = opponentFactor(recsA, tourAvg); // B faces A's return
+
+  const finalRateA = baseAafterHt * oppFactorForA.factor;
+  const finalRateB = baseBafterHt * oppFactorForB.factor;
+
+  const svptA = expectedSvptPerMatch(recsA, bestOf);
+  const svptB = expectedSvptPerMatch(recsB, bestOf);
+
+  if(svptA===null || svptB===null){
+    resultsEl.innerHTML = '<div class="panel warn">Pas assez de matchs pour estimer le nombre de points de service attendus.</div>';
+    return;
+  }
+
+  const lambdaA = finalRateA/100 * svptA;
+  const lambdaB = finalRateB/100 * svptB;
+  const lambdaTotal = lambdaA + lambdaB;
+
+  const MAXK = Math.ceil(Math.max(lambdaA,lambdaB)*4 + 20);
+  const pmfA = poissonPMF(lambdaA, MAXK);
+  const pmfB = poissonPMF(lambdaB, MAXK);
+
+  // total distribution via convolution
+  const pmfTotal = new Array(2*MAXK+1).fill(0);
+  for(let i=0;i<=MAXK;i++) for(let j=0;j<=MAXK;j++) pmfTotal[i+j] += pmfA[i]*pmfB[j];
+
+  function probOver(pmf, line){
+    let p=0;
+    for(let k=0;k<pmf.length;k++) if(k > line) p += pmf[k];
+    return p;
+  }
+
+  // Skellam grid: P(A-B >= t)
+  function probDiffAtLeast(t){
+    let p=0;
+    for(let i=0;i<=MAXK;i++) for(let j=0;j<=MAXK;j++) if(i-j >= t) p += pmfA[i]*pmfB[j];
+    return p;
+  }
+  const pAwins = probDiffAtLeast(1);
+  const pTie = (()=>{ let p=0; for(let i=0;i<=MAXK;i++) p += pmfA[i]*pmfB[i]; return p; })();
+  const pBwinsReal = (()=>{ let p=0; for(let i=0;i<=MAXK;i++) for(let j=0;j<=MAXK;j++) if(j-i>=1) p += pmfA[i]*pmfB[j]; return p; })();
+
+  const userLineTotal = parseFloat(document.getElementById('lineTotal').value);
+  const lineTotal = !isNaN(userLineTotal) ? userLineTotal : (Math.round(lambdaTotal)-0.5);
+  const lineA = Math.round(lambdaA)-0.5;
+  const lineB = Math.round(lambdaB)-0.5;
+
+  const userHcp = parseFloat(document.getElementById('lineHcp').value);
+  const hcp = !isNaN(userHcp) ? userHcp : 1.5;
+  // A + hcp > B  <=>  (A-B) > -hcp  <=>  A-B >= ceil(-hcp + 0.0001) ... use threshold via continuous line handling
+  function probHandicapCover(h){
+    // covers if diff + h > 0  => diff > -h
+    let p=0;
+    for(let i=0;i<=MAXK;i++) for(let j=0;j<=MAXK;j++){ if((i-j)+h > 0) p += pmfA[i]*pmfB[j]; }
+    return p;
+  }
+  const pAhcp = probHandicapCover(hcp);
+  const pBhcp = probHandicapCover(-hcp);
+
+  const pOverTotal = probOver(pmfTotal, lineTotal);
+  const pOverA = probOver(pmfA, lineA);
+  const pOverB = probOver(pmfB, lineB);
+
+  let html = '';
+  html += `<div class="panel">${renderPlayerBlock(dispA, compA, wbA, oppFactorForA, finalRateA)}</div>`;
+  html += `<div class="panel">${renderPlayerBlock(dispB, compB, wbB, oppFactorForB, finalRateB)}</div>`;
+
+  html += `<div class="panel">`;
+  html += `<div class="section-title">&#9552; DUEL — ${dispA} vs ${dispB} (${surface}, Bo${bestOf})</div>`;
+  html += `<div>Aces attendus : <b>${dispA} ${lambdaA.toFixed(1)}</b> | <b>${dispB} ${lambdaB.toFixed(1)}</b> | TOTAL <b>${lambdaTotal.toFixed(1)}</b></div>`;
+  html += `<hr class="rule">`;
+  html += `<div><u>Total</u> (ligne ${lineTotal}) : Over ${(pOverTotal*100).toFixed(0)}% (juste ${fairOdds(pOverTotal)}) | Under ${((1-pOverTotal)*100).toFixed(0)}% (juste ${fairOdds(1-pOverTotal)})</div>`;
+  html += `<div style="margin-top:6px;"><u>Par joueur</u> :</div>`;
+  html += `<div>&nbsp;&nbsp;${dispA} Over ${lineA} : ${(pOverA*100).toFixed(0)}% (juste ${fairOdds(pOverA)})</div>`;
+  html += `<div>&nbsp;&nbsp;${dispB} Over ${lineB} : ${(pOverB*100).toFixed(0)}% (juste ${fairOdds(pOverB)})</div>`;
+  html += `<div style="margin-top:6px;"><u>1x2 (qui fait le plus d'aces)</u> : ${dispA} ${(pAwins*100).toFixed(0)}% (${fairOdds(pAwins)}) | Égalité ${(pTie*100).toFixed(0)}% (${fairOdds(pTie)}) | ${dispB} ${(pBwinsReal*100).toFixed(0)}% (${fairOdds(pBwinsReal)})</div>`;
+  html += `<div style="margin-top:6px;"><u>Handicap</u> : ${dispA} +${hcp} : ${(pAhcp*100).toFixed(0)}% (${fairOdds(pAhcp)}) | ${dispB} +${hcp} : ${(pBhcp*100).toFixed(0)}% (${fairOdds(pBhcp)})</div>`;
+  html += `<div class="note">Cotes "justes" = sans marge bookmaker (1/probabilité du modèle), à comparer à la cote réelle proposée pour juger la value. Estimation de points de service/match : A=${svptA.toFixed(0)}, B=${svptB.toFixed(0)} (moyenne 52 dernières semaines, ajustée format si besoin).</div>`;
+  html += `</div>`;
+
+  resultsEl.innerHTML = html;
+}
+
+document.getElementById('computeBtn').addEventListener('click', computeDuel);
+</script>
+</body>
+</html>
